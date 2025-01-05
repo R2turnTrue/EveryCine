@@ -56,7 +56,7 @@ namespace DMTimeArea
             get;
         }
 
-        protected virtual double RunningTime
+        public virtual double RunningTime
         {
             get { return 0f; }
             set { }

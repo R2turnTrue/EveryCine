@@ -1,4 +1,5 @@
-﻿using UnityEditor;
+﻿using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace EveryCine.Editor
@@ -24,18 +25,27 @@ namespace EveryCine.Editor
 
             keyframe.curve = EditorGUILayout.CurveField("Curve", keyframe.curve);
 
-            if (keyframe.type == "transform")
+            var trackType = ECTypes.GetTrackType(keyframe.track.typeStr);
+            var trackInspector = ECEditorTypes.GetTrackInspector(trackType.GetType());
+
+            if (trackInspector != null)
             {
-                var parsed = ECKeyframeParser.ParseTransform(keyframe.data);
-                parsed.Item1 = EditorGUILayout.Vector3Field("Position", parsed.Item1);
-                parsed.Item2 = EditorGUILayout.Vector3Field("Rotation", parsed.Item2);
-                parsed.Item3 = EditorGUILayout.Vector3Field("Scale", parsed.Item3);
-                keyframe.data = ECKeyframeParser.MakeTransform(parsed.Item1, parsed.Item2, parsed.Item3);
-            }
-            else
+                trackInspector.InspectKeyframe(keyframe);
+            } else
             {
-                GUILayout.Label("Unknown Type: " + keyframe.type);
+                GUILayout.Label("Unknown Type: " + keyframe.track.typeStr);
                 keyframe.data = EditorGUILayout.TextField("Raw Data", keyframe.data);
+            }
+
+            if (GUILayout.Button("Delete Keyframe"))
+            {
+                Debug.Log($"Bef: {keyframe.track.keyframes.Count}");
+                var track = keyframe.track;
+                EditorUtility.SetDirty(track.clip);
+                var idx = track.FindKeyframeIdxWithStart(keyframe.start);
+                track.keyframes.RemoveAt(idx);
+                Debug.Log($"Aft: {keyframe.track.keyframes.Count}");
+                ECInspectorWindow.InspectSomething(track.clip);
             }
         }
     }

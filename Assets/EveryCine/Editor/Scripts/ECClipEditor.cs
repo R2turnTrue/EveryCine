@@ -11,12 +11,15 @@ using TimeUtility = DMTimeArea.TimeUtility;
 
 namespace EveryCine.Editor
 {
-    public class ECClipEditor : SimpleTimeArea
+    public class ECClipEditor : SimpleTimeArea, ECCinemable, ECShowable
     {
         private Rect rectTotalArea;
         private Rect rectContent;
         private Rect rectTimeRuler;
 
+        public static ECClipEditor Instance;
+
+        private int _lastDraggingPoint;
         private Keyframe _lastDraggingKeyframe;
 
         private struct InstantObject
@@ -26,7 +29,7 @@ namespace EveryCine.Editor
         }
         
         private Dictionary<string, InstantObject> instantObjects = new();
-        private List<ECObjectWatchState> lastWatchState = new();
+        private List<ECTrackWatchState> lastWatchState = new();
         private bool recording = false;
 
         private Rect rectTopBar;
@@ -42,7 +45,7 @@ namespace EveryCine.Editor
 
         private double runningTime = 0.0f;
 
-        protected override double RunningTime
+        public override double RunningTime
         {
             get { return runningTime; }
             set { runningTime = value; }
@@ -120,6 +123,8 @@ namespace EveryCine.Editor
             window.InitInstantObjects();
             window.Show();
 
+            Instance = window;
+
             ECInspectorWindow.InspectSomething(clip);
         }
 
@@ -170,9 +175,16 @@ namespace EveryCine.Editor
                     foreach (var track in clip.tracks)
                     {
                         //Debug.Log("I'm seeking!");
-                        var data = track.Seek(this.RunningTime);
+                        var data = track.Seek(this, this.RunningTime);
 
-                        if (track.type == ECTrackType.GameObject)
+                        if (data != null)
+                        {
+                            var trackType = ECTypes.GetTrackType(track.typeStr);
+                            trackType.RuntimePlay(this, track, this, data);
+                        }
+
+                        /*
+                        if (track.type == ECTrackType_Old.Transform)
                         {
                             if (instantObjects.ContainsKey(track.go_variableName))
                             {
@@ -180,6 +192,7 @@ namespace EveryCine.Editor
                                 ECCinema.TransformPlayFromData(io.obj, data);
                             }
                         }
+                        */
                     }
                 }
             }
@@ -187,84 +200,35 @@ namespace EveryCine.Editor
             for (int i = lastWatchState.Count - 1; i >= 0; i--)
             {
                 var state = lastWatchState[i];
-                if (ObjCompareState(state))
-                    ObjChangeDetected(i, state);
-            }
-            
-            _lastUpdateTime = (float)EditorApplication.timeSinceStartup;
-            Repaint();
-        }
-
-        private bool ObjCompareState(ECObjectWatchState state)
-        {
-            var target = state.target;
-            var targetTrans = target.transform;
-            
-            if (targetTrans.localPosition != state.lastPos)
-            {
-                return true;
-            }
-            
-            if (targetTrans.localRotation.eulerAngles != state.lastRot)
-            {
-                return true;
-            }
-            
-            if (targetTrans.localScale != state.lastSca)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private ECObjectWatchState ObjBuildNewState(GameObject target, string varName)
-        {
-            return new ECObjectWatchState
-            {
-                lastPos = target.transform.localPosition,
-                lastRot = target.transform.localRotation.eulerAngles,
-                lastSca = target.transform.localScale,
-                target = target,
-                varName = varName
-            };
-        }
-
-        private void ObjChangeDetected(int idx, ECObjectWatchState state)
-        {
-            var frame = Mathf.RoundToInt((float) runningTime / ECConstants.SecondPerFrame);
-            Debug.Log($"[{idx}] Change Detected at {frame}");
-            lastWatchState[idx] = ObjBuildNewState(state.target, state.varName);
-
-            foreach (var track in clip.tracks)
-            {
-                if (track.type == ECTrackType.GameObject && track.go_variableName == state.varName)
+                var trackType = ECTypes.GetTrackType(state.track.typeStr);
+                var newState = trackType.CompareWatchTrack(state, state.track);
+                if (newState)
                 {
+                    state = trackType.CreateNewWatchState(state.track, this);
+                    lastWatchState[i] = state;
+                    
+                    var frame = Mathf.RoundToInt((float) runningTime / ECConstants.SecondPerFrame);
+                    //Debug.Log($"[{i}] Change Detected at {frame}");
+
+                    var track = state.track;
+                    
                     var kfIdx = track.FindKeyframeIdx(frame);
 
                     if (kfIdx >= 0)
                     {
-                        track.keyframes[kfIdx].data = ECKeyframeParser.MakeTransform(
-                            state.lastPos,
-                            state.lastRot,
-                            state.lastSca);
+                        track.keyframes[kfIdx].data = trackType.BuildWatchKeyframeData(track, state);
                     }
                     else
                     {
-                        track.keyframes.Add(new Keyframe
-                        {
-                            start = frame,
-                            end = frame,
-                            data = ECKeyframeParser.MakeTransform(
-                                state.lastPos,
-                                state.lastRot,
-                                state.lastSca),
-                            type = "transform",
-                            startEndTogether = !track.hasDuration
-                        });
+                        var kf = trackType.CreateEmptyKeyframe(track, frame, frame);
+                        kf.data = trackType.BuildWatchKeyframeData(track, state);
+                        track.keyframes.Add(kf);
                     }
                 }
             }
+            
+            _lastUpdateTime = (float)EditorApplication.timeSinceStartup;
+            Repaint();
         }
 
         private void OnGUI()
@@ -344,18 +308,15 @@ namespace EveryCine.Editor
                 }
                 
                 GUILayout.BeginHorizontal();
-                
-                Texture icon;
 
-                switch (track.type)
+                ECTrackType type = ECTypes.GetTrackType(track.typeStr);
+                ECTrackTypeInspector inspector = ECEditorTypes.GetTrackInspector(type.GetType());
+
+                Texture icon = null;
+                
+                if (inspector != null)
                 {
-                    case ECTrackType.GameObject:
-                        icon = ECResourcesEditor.prefabIcon;
-                        break;
-                    case ECTrackType.MainCamera:
-                    default:
-                        icon = ECResourcesEditor.cameraIcon;
-                        break;
+                    icon = inspector.Icon();
                 }
                 
                 EditorGUILayout.LabelField(new GUIContent(icon), GUILayout.Width(20));
@@ -439,7 +400,11 @@ namespace EveryCine.Editor
                 {
                     foreach (var obj in instantObjects)
                     {
-                        lastWatchState.Add(ObjBuildNewState(obj.Value.obj, obj.Key));
+                        foreach (var track in clip.tracks)
+                        {
+                            var typ = ECTypes.GetTrackType(track.typeStr);
+                            lastWatchState.Add(typ.CreateNewWatchState(track, this));
+                        }
                     }
                 }
                 else
@@ -519,7 +484,51 @@ namespace EveryCine.Editor
                 {
                     if (track.hasDuration)
                     {
-                        // todo:
+                        var px = TimeToPixel(keyframe.start * ECConstants.SecondPerFrame);
+                        var width = TimeToPixel(keyframe.end * ECConstants.SecondPerFrame) - px;
+                        
+
+                        var btn = new GUIStyle(GUI.skin.button);
+                        btn.normal.background = Texture2D.grayTexture;
+                        
+                        if (ECInspectorWindow.currentInspecting == keyframe)
+                        {
+                            btn.normal.background = Texture2D.linearGrayTexture;
+                        }
+
+                        int dragPoint = 1;
+
+                        var rect = new Rect(offsetX + px - LEFTWIDTH * 2, 6 + i * 26, width, 12);
+
+                        var st = offsetX + TimeToPixel(keyframe.start * ECConstants.SecondPerFrame) - LEFTWIDTH * 2 - 6;
+                        var ed = offsetX + TimeToPixel(keyframe.end * ECConstants.SecondPerFrame) - LEFTWIDTH * 2 - 6;
+                        var distFromStart = Mathf.Abs(st - eventPos.x);
+                        var distFromEnd = Mathf.Abs(ed - eventPos.x);
+
+                        if (distFromStart <= 15)
+                        {
+                            EditorGUIUtility.AddCursorRect(rect, MouseCursor.ResizeHorizontal);
+                            dragPoint = 0;
+                        } else if (distFromEnd <= 15)
+                        {
+                            EditorGUIUtility.AddCursorRect(rect, MouseCursor.ResizeHorizontal);
+                            dragPoint = 2;
+                        }
+                        else
+                        {
+                        }
+
+                        if (GUI.Button(rect,
+                                "",
+                                btn))
+                        {
+                            ECInspectorWindow.InspectSomething(keyframe);
+                        }
+                        
+                        if (eventType == EventType.MouseDown && rect.Contains(eventPos)) {
+                            _lastDraggingKeyframe = keyframe;
+                            _lastDraggingPoint = dragPoint;
+                        }
                     }
                     else
                     {
@@ -556,10 +565,36 @@ namespace EveryCine.Editor
                 double t = PixelToTime(-offsetX + eventPos.x + LEFTWIDTH * 2 - 0);
                 int f = Mathf.RoundToInt((float)t / ECConstants.SecondPerFrame - ECConstants.SecondPerFrame / 2);
 
-                if (f >= 0)
+                if (_lastDraggingKeyframe.track.hasDuration)
                 {
-                    _lastDraggingKeyframe.start = f;
-                    _lastDraggingKeyframe.end = f;
+                    if (_lastDraggingPoint == 0)
+                    {
+                        if (_lastDraggingKeyframe.end - f >= 2)
+                        {
+                            _lastDraggingKeyframe.start = f;
+                        }
+                    } else if (_lastDraggingPoint == 2)
+                    {
+                        if (f - _lastDraggingKeyframe.start >= 2)
+                        {
+                            _lastDraggingKeyframe.end = f;
+                        }
+                    }
+                    else
+                    {
+                        var beforeDistance = _lastDraggingKeyframe.end - _lastDraggingKeyframe.start;
+                        
+                        _lastDraggingKeyframe.start = f - beforeDistance / 2;
+                        _lastDraggingKeyframe.end = f + beforeDistance / 2;
+                    }
+                }
+                else
+                {
+                    if (f >= 0)
+                    {
+                        _lastDraggingKeyframe.start = f;
+                        _lastDraggingKeyframe.end = f;
+                    }
                 }
             }
             
@@ -567,6 +602,46 @@ namespace EveryCine.Editor
                 ECInspectorWindow.InspectSomething(_lastDraggingKeyframe);
                 _lastDraggingKeyframe = null;
             }
+        }
+
+        public void Pause()
+        {
+        }
+
+        public void Resume()
+        {
+        }
+
+        public void Stop()
+        {
+        }
+
+        public void AddTime(double t)
+        {
+            RunningTime += t;
+        }
+
+        public GameObject GetGameObject(string varName)
+        {
+            //Debug.Log($"Accessing: {varName} - {instantObjects.ContainsKey(varName)}");
+            
+            if (!instantObjects.ContainsKey(varName)) return null;
+            
+            var obj = instantObjects[varName];
+            
+            return obj.obj;
+        }
+
+        public int GetInt(string varName)
+        {
+            // todo
+            return 0;
+        }
+
+        public float GetFloat(string varName)
+        {
+            // todo
+            return 0.0f;
         }
     }
 }

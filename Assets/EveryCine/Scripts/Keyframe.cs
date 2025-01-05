@@ -9,7 +9,7 @@ namespace EveryCine
         public int end;
         public bool startEndTogether;
         public string data;
-        public string type;
+        public ECClipTrack track;
         public AnimationCurve curve = AnimationCurve.Linear(0.0f, 0.0f, 1.0f, 1.0f);
         
         public string EveryCineInspectName()

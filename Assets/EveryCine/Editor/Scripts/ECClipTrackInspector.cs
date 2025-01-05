@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
 
@@ -24,18 +25,35 @@ namespace EveryCine.Editor
             
             track.trackName = EditorGUILayout.TextField("Track Name", track.trackName);
 
-            if (track.type == ECTrackType.GameObject)
+            var trackType = ECTypes.GetTrackType(track.typeStr);
+            var inspector = ECEditorTypes.GetTrackInspector(trackType.GetType());
+            if (inspector != null)
             {
-                _variableId = ECEditorUtils.VariablePopup("Ref Variable", _variableId, track.clip,
-                    ECClipVariable.ECClipVariableType.GameObject);
-                track.go_variableName = track.clip.variables
-                    .Where((it) => it.varType == ECClipVariable.ECClipVariableType.GameObject)
-                    .ToArray()[_variableId].varName;
+                inspector.Inspect(track);
             }
             
             if (GUILayout.Button("Delete Track"))
             {
                 return null;
+            }
+            
+            if (GUILayout.Button("Add keyframe at current frame"))
+            {
+                var type = ECTypes.GetTrackType(track.typeStr);
+                var f = Mathf.RoundToInt((float)ECClipEditor.Instance.RunningTime / ECConstants.SecondPerFrame);
+                var f_end = Mathf.RoundToInt((float)ECClipEditor.Instance.RunningTime / ECConstants.SecondPerFrame);
+
+                if (track.hasDuration)
+                {
+                    f_end += 50;
+                }
+                
+                var kf = type.CreateEmptyKeyframe(track, f, f_end);
+                track.keyframes.Add(kf);
+                
+                track.keyframes =
+                    track.keyframes.OrderBy(it => it.start)
+                        .ToList();
             }
             return track;
         }

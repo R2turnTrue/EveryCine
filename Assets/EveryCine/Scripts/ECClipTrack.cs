@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace EveryCine
 {
@@ -7,7 +8,7 @@ namespace EveryCine
     public class ECClipTrack : ECInspectable
     {
         public ECClip clip;
-        public ECTrackType type;
+        public string typeStr;
         public bool hasDuration;
         public string trackName;
 
@@ -19,6 +20,20 @@ namespace EveryCine
             {
                 var kf = keyframes[i];
                 if (kf.start >= frame && kf.end <= frame)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+        
+        public int FindKeyframeIdxWithStart(int start)
+        {
+            for (int i = keyframes.Count - 1; i >= 0; i--)
+            {
+                var kf = keyframes[i];
+                if (kf.start == start)
                 {
                     return i;
                 }
@@ -39,7 +54,7 @@ namespace EveryCine
             return "Track";
         }
 
-        public string Seek(double time)
+        public string Seek(ECCinemable cinema, double time)
         {
             int f = Mathf.RoundToInt((float)time / ECConstants.SecondPerFrame);
 
@@ -61,27 +76,28 @@ namespace EveryCine
 
             if (before == null)
             {
-                Debug.Log("(null because before null)");
+                //Debug.Log("(null because before null)");
+                return null;
+            }
+            
+            var trackType = ECTypes.GetTrackType(before.track.typeStr);
+            
+            if (trackType.IsSingleFrame() && f != before.start)
+            {
                 return null;
             }
 
-            if (after == null)
+            if (trackType.HasDuration() && f >= before.end)
+            {
+                return null;
+            }
+
+            if (before.start == before.end && after == null)
             {
                 return before.data;
             }
-
-            if (before.type == "transform")
-            {
-                var distanceInTime = (after.start - before.start) * ECConstants.SecondPerFrame;
-                var timeAmount = (float) (time - (before.start * ECConstants.SecondPerFrame));
-                
-                return ECKeyframeParser.LerpTransform(before.curve, before.data, after.data,
-                     timeAmount / distanceInTime);
-            }
             
-            Debug.Log("(null because unknown type)");
-
-            return null;
+            return trackType.Interpolate(cinema, before, after, time);
         }
     }
 }

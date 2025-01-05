@@ -7,7 +7,7 @@ namespace EveryCine.Editor
 {
     public class ECNewTrackWindowEditor : EditorWindow
     {
-        private ECTrackType _selectedType = ECTrackType.GameObject;
+        private int _selectedType = 0;
 
         private string trackName = "";
 
@@ -17,21 +17,25 @@ namespace EveryCine.Editor
         
         private void OnGUI()
         {
-            _selectedType = (ECTrackType)EditorGUILayout.EnumPopup(new GUIContent("Track Type"), _selectedType);
+            _selectedType = EditorGUILayout.Popup(new GUIContent("Track Type"), _selectedType,
+                ECTypes.trackTypes.Keys.ToArray());
 
             GUILayout.BeginVertical(GUI.skin.window);
 
             trackName = EditorGUILayout.TextField("Track Name", trackName);
+
+            /*
             switch (_selectedType)
             {
-                case ECTrackType.GameObject:
+                case ECTrackType_Old.Transform:
                     _go_variableIdx = ECEditorUtils.VariablePopup("Ref Variable", _go_variableIdx, clip,
                         ECClipVariable.ECClipVariableType.GameObject);
                     break;
-                case ECTrackType.MainCamera:
+                case ECTrackType_Old.MainCamera:
                 default:
                     break;
             }
+            */
             
             GUILayout.EndVertical();
             
@@ -44,13 +48,12 @@ namespace EveryCine.Editor
                 ECClipTrack track = new ECClipTrack();
 
                 track.clip = clip;
-                
-                track.type = _selectedType;
 
-                if (_selectedType == ECTrackType.GameObject)
-                {
-                    track.go_variableName = variable.varName;
-                }
+                var typeName = ECTypes.trackTypes.Keys.ToArray()[_selectedType];
+                var trackType = ECTypes.GetTrackType(typeName);
+                track.typeStr = typeName;
+
+                track.hasDuration = trackType.HasDuration();
 
                 track.trackName = trackName;
                 

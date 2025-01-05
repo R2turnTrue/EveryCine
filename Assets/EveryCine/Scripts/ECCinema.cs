@@ -29,7 +29,7 @@ namespace EveryCine
             }
         }
         
-        public class ECShow
+        public class ECShow : ECCinemable, ECShowable
         {
             private float _showTime = 0.0f;
             private ECCinema _cinema;
@@ -45,6 +45,12 @@ namespace EveryCine
             public System.Guid ShowId
             {
                 get => _guid;
+            }
+            
+            public bool ShowPaused
+            {
+                get;
+                private set;
             }
 
             public bool ShowEnded
@@ -81,6 +87,21 @@ namespace EveryCine
                 floatVar[varName] = value;
                 return this;
             }
+            
+            public GameObject GetGameObject(string varName)
+            {
+                return gameObjectVar[varName];
+            }
+            
+            public int GetInt(string varName)
+            {
+                return intVar[varName];
+            }
+            
+            public float GetFloat(string varName)
+            {
+                return floatVar[varName];
+            }
 
             public ECShow Play()
             {
@@ -91,37 +112,37 @@ namespace EveryCine
             public void Step(float deltaTime)
             {
                 int failCount = 0;
+
+                if (ShowPaused && _showTime > 0)
+                {
+                    return;
+                }
+                
+                _showTime += deltaTime;
                 
                 foreach (var track in _clip.tracks)
                 {
-                    _showTime += deltaTime;
-                    var seek = track.Seek(_showTime);
+                    var seek = track.Seek(this, _showTime);
 
                     if (seek == null)
                     {
                         failCount += 1;
                     }
-
-                    if (track.type == ECTrackType.GameObject)
+                    else
                     {
-                        if (gameObjectVar.ContainsKey(track.go_variableName))
-                        {
-                            bool result = TransformPlayFromData(gameObjectVar[track.go_variableName], seek);
+                        var trackType = ECTypes.GetTrackType(track.typeStr);
 
-                            if (!result)
-                            {
-                                failCount += 1;
-                            }
-                        }
-                        else
+                        bool result = trackType.RuntimePlay(this, track, this, seek);
+                        if (!result)
                         {
-                            throw new NullReferenceException($"GameObject Variable {track.go_variableName} is not set!");
+                            failCount += 1;
                         }
                     }
                 }
 
                 if (failCount >= _clip.tracks.Count)
                 {
+                    Debug.Log($"[{ShowId}] ended");
                     ShowEnded = true;
                 }
             }
@@ -129,6 +150,26 @@ namespace EveryCine
             public override int GetHashCode()
             {
                 return ShowId.GetHashCode();
+            }
+
+            public void Pause()
+            {
+                ShowPaused = true;
+            }
+
+            public void Resume()
+            {
+                ShowPaused = false;
+            }
+
+            public void Stop()
+            {
+                ShowEnded = true;
+            }
+
+            public void AddTime(double t)
+            {
+                _showTime += (float)t;
             }
         }
 

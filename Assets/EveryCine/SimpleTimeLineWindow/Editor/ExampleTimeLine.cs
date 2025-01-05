@@ -20,7 +20,7 @@ public class ExampleTimeLine : SimpleTimeArea
     private float _lastUpdateTime = 0f;
     #region Used
     private double runningTime = 10.0f;
-    protected override double RunningTime
+    public override double RunningTime
     {
         get { return runningTime; }
         set

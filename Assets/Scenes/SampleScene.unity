@@ -483,9 +483,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cinema: {fileID: 832235419}
-  o1: {fileID: 0}
-  o2: {fileID: 0}
-  clip: {fileID: 11400000, guid: 6435a49183f825e4981de34163a22580, type: 2}
+  o1: {fileID: 411407941}
+  o2: {fileID: 2037608009}
+  clip: {fileID: 11400000, guid: e50bd1a5164721248a4b6a0e99b31788, type: 2}
 --- !u!1 &2037608009
 GameObject:
   m_ObjectHideFlags: 0
